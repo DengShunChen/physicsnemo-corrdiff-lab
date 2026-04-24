@@ -4,6 +4,16 @@
 
 更細的模型與參數說明（官方 CorrDiff 歸檔）見：[`docs/CorrDiff-README.md`](docs/CorrDiff-README.md)。
 
+### `WORK_DIR` 與 `sbatch` 怎麼用？
+
+Slurm 作業腳本（`tran.slrum`、`inference.slrum`）裡的 **`WORK_DIR`** 代表專案**根目錄**（要含 `physicsnemo/`、`.sif`、執行 `tran_prep.sh` 後的 `.local/`）。
+
+- **建議**：在專案根下提交，讓系統的 **`SLURM_SUBMIT_DIR`** 就是 repo 根，例如：  
+  `cd /path/to/physicsnemo-corrdiff-lab && sbatch tran.slrum`
+- **或**：在提交前手動 `export WORK_DIR=/絕對路徑/到/專案根` 再 `sbatch …`（適合從別處路徑呼叫腳本時）。
+
+`bash tran_prep.sh` 會以**腳本所在目錄**當專案根（可選 `WORK_DIR=...` 覆寫）。請勿混用兩條路徑。
+
 ---
 
 ## 1. 整體在幹嘛
@@ -47,14 +57,16 @@ flowchart LR
 ```
 
 - **唯讀映像、可寫內容在 bind 出來的目錄**：因此不在映像內重複安裝一份巨大環境，而是**同一棵樹**給訓練/推論共用。
-- **依賴安裝位置**：`tran_prep.sh`（以及目前 `inference.slrum` 內自行執行的 `pip`）把套件裝到 **`$WORK_DIR/.local`**，與 `tran.slrum` 內的 `export PYTHONUSERBASE=...` 必須一致，否則作業內 `import` 會失敗。
+- **依賴安裝位置**：`bash tran_prep.sh` 在容器內把套件裝到 **`$WORK_DIR/.local`**；`tran.slrum` 與 `inference.slrum` 只設定同一路徑的 `PYTHONUSERBASE`（**作業內不再重跑 pip**；若沒有 `.local` 則作業直接失敗並提示先跑 `tran_prep.sh`）。
 - **分散式 torch**：`tran.slrum` 內可設 `MASTER_ADDR=127.0.0.1`，避免部分環境在 `localhost` 上 c10d 綁定失敗；多卡時 `--nproc_per_node` 須與申請的 GPU 數一致。
 
 ---
 
 ## 3. 端對端手順（建議照序）
 
-以下假設專案根目錄為 `WORK_DIR`（腳本內有寫死路徑者，請改成你的**絕對路徑**）。
+專案根目錄以下稱 `WORK_DIR`（見上節 `sbatch` 用法，**不要**在腳本裡寫死個人主機路徑）。
+
+> **關於 `tran.slrum` 預設內容**：倉庫內**預設只啟用 Diffusion 訓練**（Regression 行為註解）。若你要**從零先訓練 regression**，請自行改註解：關掉 Diffusion 區、啟用 `config_training_hrrr_mini_regression`；待產生 checkpoint 後再切回擴散訓練，並讓 `REGRESSION_MODEL` 指到實際檔名。
 
 | 步驟 | 做什麼 | 成功時你會有什麼 |
 |------|--------|------------------|
@@ -80,8 +92,8 @@ Regression checkpoint → 作為條件訓練 Diffusion；Regression + Diffusion 
 | 檔案 | 職責 |
 |------|------|
 | [`tran_prep.sh`](tran_prep.sh) | 在**非** Slurm 或登入節點、用**同一** `.sif` 與 bind，把 `pip` 寫入 `$WORK_DIR/.local`；**訓練作業不應依賴此時再裝**（`tran.slrum` 已不內建 pip）。 |
-| [`tran.slrum`](tran.slrum) | Slurm 上 `torchrun` **訓練**；需**事先**跑過 `tran_prep.sh`；`MASTER_ADDR=127.0.0.1` 可緩解部分 c10d 錯誤。 |
-| [`inference.slrum`](inference.slrum) | `torchrun generate.py` + `score_samples.py`；**目前腳本內仍含** `pip install`（可改為與訓練相同、僅信賴 `tran_prep.sh` 以省排程開頭時間）。 |
+| [`tran.slrum`](tran.slrum) | Slurm 上 `torchrun` **訓練**；需**事先** `bash tran_prep.sh`；內建 `MASTER_ADDR=127.0.0.1`；`sbatch` 前請在專案根或設好 `WORK_DIR`。 |
+| [`inference.slrum`](inference.slrum) | `torchrun generate.py` + `score_samples.py`；同樣依賴**事先**的 `tran_prep.sh`，**不**在作業內重跑 `pip`。 |
 | `scripts/build-physicsnemo-sif.sh` | 從 NGC 映像轉出 `.sif`（大檔、勿提交 Git）。 |
 | `scripts/install-physicsnemo-uv.sh` | 在 submodule 內以 `uv sync` 安裝（本機開發用）。 |
 
