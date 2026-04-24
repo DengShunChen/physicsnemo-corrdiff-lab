@@ -1,6 +1,6 @@
-# AI-Powered Physics Bootcamp（NCHC 工作區）
+# AI-Powered Physics Bootcamp（CWA 工作區）
 
-本目錄為 **NCHC x NVIDIA**「AI-Powered Physics Bootcamp」實作與實驗用工作區，與上層 **Git 版控** 的建議方式如下。
+本目錄為 **CWA x NVIDIA**「AI-Powered Physics Bootcamp」實作與實驗用工作區，與上層 **Git 版控** 的建議方式如下。
 
 ## 目錄說明
 
@@ -20,3 +20,11 @@
 - **不追蹤**：`physicsnemo/` 整體、資料集、映像、`.local`、日誌與大型產出（見 `.gitignore`）。
 
 若你修改的是 `physicsnemo` 內的範例或程式，請在 `physicsnemo` 內用 Git 管理（fork 或另開 branch 再 push）。
+
+## 網路連線（CWA proxy）
+
+若此環境需要走 CWA proxy 才能連外（例如 push/pull GitHub），先執行：
+
+```bash
+. ~/.proxy
+```
