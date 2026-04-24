@@ -29,6 +29,21 @@
 
 若希望**盡量只依賴映像、少在掛載目錄裡 `pip install`**，需改用自訂定義的容器內建環境或把依賴 bake 進 image，並相應修改腳本掛載範圍與啟動方式；此 repo 內的範例仍以「映像 + 原始碼 + `.local`」流程為主。
 
+## 推論 / `inference.slrum` 的 input 是什麼？
+
+`inference.slrum` 在 `examples/weather/corrdiff/` 內執行 **`generate.py`**，Hydra 設定檔為 **`config_generate_hrrr_mini.yaml`**，並以命令列覆寫兩個 checkpoint 路徑。廣義的「input」可分成底下幾類（路徑相對於 corrdiff 目錄，除非改成絕對路徑或 Hydra override）：
+
+| 類型 | 內容 | 在此範例中怎麼指定 |
+|------|------|-------------------|
+| **模型權重** | Regression 與 Diffusion 的 **checkpoint**（`.mdlus`） | 腳本內的 `REGRESSION_MODEL`、`DIFFUSION_MODEL`；實際等同覆寫 `++generation.io.reg_ckpt_filename`、`++generation.io.res_ckpt_filename`。 |
+| **氣象資料** | 供產生流程讀取的主 **NetCDF**（`dataset.data_path`） | 在 `config_generate_hrrr_mini.yaml` 內預設為 `./data/hrrr_mini/hrrr_mini_train.nc`；若你的資料在別處（例如上層的 `modulus_datasets-hrrr_mini_v1/`），需改檔、做 symlink，或下指令時加 `++dataset.data_path=...` 覆寫。 |
+| **統計檔** | 與訓練/資料集對應的 **stats**（`dataset.stats_path`） | 預設為 `./data/hrrr_mini/stats.json`；變更方式同上。 |
+| **產生條件** | 要產生的**時間點**等（`generation.times` 等欄位） | 見同一個 yaml 中 `generation.times`（ISO 8601 時間字串列表）、`num_ensembles`、`seed_batch_size` 等。 |
+
+產生完成後，腳本另跑 **`score_samples.py corrdiff_output.nc score_output.nc`**：第一個參數是 `generate` 的輸出 **NetCDF**（檔名依你的設定/輸出目錄而定，範例腳本寫成 `corrdiff_output.nc`），第二個為評分結果輸出檔。若 `generate` 的輸出檔名或路徑不同，請一併修改 `score_samples` 那一行。
+
+完整欄位定義以子模組內的設定為準：[`config_generate_hrrr_mini.yaml`](physicsnemo/examples/weather/corrdiff/conf/config_generate_hrrr_mini.yaml)（以及匯入的 `defaults`：`dataset: hrrr_mini`、`generation: non_patched`）。
+
 ## 版控策略（此根目錄 repo）
 
 - **追蹤**：營隊自訂腳本、講義 PDF、本 `README`、根目錄 `.gitignore`、**`physicsnemo` 作為 submodule 的 commit 指針**（`.gitmodules`）。
