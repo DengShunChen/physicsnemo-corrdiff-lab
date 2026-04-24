@@ -2,3 +2,4 @@
 	path = physicsnemo
 	url = https://github.com/NVIDIA/physicsnemo.git
 	branch = main
+	ignore = untracked
