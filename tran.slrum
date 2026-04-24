@@ -8,7 +8,23 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=corrdiff_%j.log
 
-# WORK_DIR：請「在專案根」執行 sbatch（會用 SLURM_SUBMIT_DIR），或手動 export WORK_DIR=/絕對路徑/專案根
+#===============================================================================
+# CorrDiff 兩階段訓練（同一份腳本，用環境變數切換，勿同時跑兩種）
+#
+# 階段 1 — regression
+#   產生 checkpoints_regression/*.mdlus
+#   提交:  TRAIN_STAGE=regression sbatch tran.slrum
+#
+# 階段 2 — diffusion
+#   需先有階段 1 的權重；產生 checkpoints_diffusion/
+#   提交:  TRAIN_STAGE=diffusion sbatch tran.slrum
+#   自訂 regression 權重路徑:  TRAIN_STAGE=diffusion REGRESSION_CHECKPOINT=/path/to/foo.mdlus sbatch tran.slrum
+#
+# 預設: TRAIN_STAGE=diffusion（與下段 REGRESSION_CHECKPOINT 一佱檢查）
+# 其他: 在專案根執行 sbatch，或 export WORK_DIR=專案根
+# 前置:  bash tran_prep.sh ；資料 symlink 見 README / docs/CorrDiff-README.md
+#===============================================================================
+
 set -euo pipefail
 if [[ -z "${WORK_DIR:-}" ]]; then
   if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
@@ -20,17 +36,27 @@ if [[ -z "${WORK_DIR:-}" ]]; then
 fi
 cd "$WORK_DIR"
 
+TRAIN_STAGE="${TRAIN_STAGE:-diffusion}"
+REGRESSION_CHECKPOINT="${REGRESSION_CHECKPOINT:-$WORK_DIR/physicsnemo/examples/weather/corrdiff/checkpoints_regression/CorrDiffRegressionUNet.0.2000384.mdlus}"
+
 SIF="${WORK_DIR}/physicsnemo_25.11.sif"
 if [[ ! -f "$SIF" ]]; then
   echo "error: 找不到 SIF: $SIF" >&2
   exit 1
 fi
 if [[ ! -d "${WORK_DIR}/.local" ]]; then
-  echo "error: 找不到 ${WORK_DIR}/.local。請先在此目錄執行: bash tran_prep.sh" >&2
+  echo "error: 找不到 ${WORK_DIR}/.local。請先: bash tran_prep.sh" >&2
   exit 1
 fi
 
-# 依賴須先由 login/CPU 節點執行: bash tran_prep.sh
+# 擴散階段：盡早檢查 regression 權重是否存在（少浪費排程/GPU 時間）
+if [[ "$TRAIN_STAGE" == "diffusion" && ! -f "$REGRESSION_CHECKPOINT" ]]; then
+  echo "error: TRAIN_STAGE=diffusion 需要已存在的 REGRESSION_CHECKPOINT" >&2
+  echo "  目前: $REGRESSION_CHECKPOINT" >&2
+  echo "  請先跑階段 1: TRAIN_STAGE=regression sbatch $0" >&2
+  exit 1
+fi
+
 singularity exec --nv --bind "$WORK_DIR:$WORK_DIR" "$SIF" bash -c "
     set -euo pipefail
     if [[ -f \"\$HOME/.proxy\" ]]; then
@@ -41,11 +67,21 @@ singularity exec --nv --bind "$WORK_DIR:$WORK_DIR" "$SIF" bash -c "
     export PYTHONUSERBASE=$WORK_DIR/.local
     export PATH=\"\$PYTHONUSERBASE/bin:\$PATH\"
     export MASTER_ADDR=127.0.0.1
+    export TRAIN_STAGE='${TRAIN_STAGE}'
+    export REGRESSION_CHECKPOINT='${REGRESSION_CHECKPOINT}'
+
     cd $WORK_DIR/physicsnemo/examples/weather/corrdiff
-    # --- 訓練階段擇一啟用（預設：僅 Diffusion；若要從零開始請先啟用 Regression 並註解 Diffusion）---
-    #python train.py --config-name=config_training_hrrr_mini_regression.yaml
-    #torchrun --nproc_per_node=8 train.py --config-name=config_training_hrrr_mini_regression.yaml
-    REGRESSION_MODEL=\"${WORK_DIR}/physicsnemo/examples/weather/corrdiff/checkpoints_regression/CorrDiffRegressionUNet.0.2000384.mdlus\"
-    torchrun --nproc_per_node=8 train.py --config-name=config_training_hrrr_mini_diffusion.yaml \
-        ++training.io.regression_checkpoint_path=\${REGRESSION_MODEL}
+    NPROC=8
+    if [[ \"\$TRAIN_STAGE\" == 'regression' ]]; then
+      echo '==> [CorrDiff] 階段: REGRESSION（config_training_hrrr_mini_regression）'
+      torchrun --nproc_per_node=\$NPROC train.py --config-name=config_training_hrrr_mini_regression.yaml
+    elif [[ \"\$TRAIN_STAGE\" == 'diffusion' ]]; then
+      echo '==> [CorrDiff] 階段: DIFFUSION（config_training_hrrr_mini_diffusion）'
+      echo \"    使用 REGRESSION_CHECKPOINT: \$REGRESSION_CHECKPOINT\"
+      torchrun --nproc_per_node=\$NPROC train.py --config-name=config_training_hrrr_mini_diffusion.yaml \\
+        ++training.io.regression_checkpoint_path=\"\${REGRESSION_CHECKPOINT}\"
+    else
+      echo \"error: TRAIN_STAGE 必須是 regression 或 diffusion（目前: '\${TRAIN_STAGE}'）\" >&2
+      exit 1
+    fi
 "

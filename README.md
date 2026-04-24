@@ -66,7 +66,7 @@ flowchart LR
 
 專案根目錄以下稱 `WORK_DIR`（見上節 `sbatch` 用法，**不要**在腳本裡寫死個人主機路徑）。
 
-> **關於 `tran.slrum` 預設內容**：倉庫內**預設只啟用 Diffusion 訓練**（Regression 行為註解）。若你要**從零先訓練 regression**，請自行改註解：關掉 Diffusion 區、啟用 `config_training_hrrr_mini_regression`；待產生 checkpoint 後再切回擴散訓練，並讓 `REGRESSION_MODEL` 指到實際檔名。
+> **關於 `tran.slrum` 兩階段**：以環境變數 **`TRAIN_STAGE`** 切換，不必改註解。`TRAIN_STAGE=regression` 跑迴歸；`TRAIN_STAGE=diffusion`（預設）跑擴散，並以 **`REGRESSION_CHECKPOINT`**（可選覆寫）指向上一步的 `.mdlus`。
 
 | 步驟 | 做什麼 | 成功時你會有什麼 |
 |------|--------|------------------|
@@ -75,8 +75,8 @@ flowchart LR
 | **2. 連結到 corrdiff 的 `data/`** | 在 `WORK_DIR` 下建立 symlink，讓 `physicsnemo/examples/weather/corrdiff/data` 指到實際資料目錄（**指令摘要在 `docs/CorrDiff-README.md`**） | `train`/`generate` 的 `config_*` 內相對路徑能讀到 `.nc` / `stats.json` |
 | **3. 準備或建置映像** | 將 `physicsnemo_25.11.sif` 放在 `WORK_DIR`；若自行建置見 `scripts/build-physicsnemo-sif.sh` | 與 Slurm 腳本內的 `.sif` 路徑一致 |
 | **4. 安裝 Python 依賴（只須在訓練/推論前執行或更新）** | 在 **login 或互動（通常無 GPU 即可）** 執行：`bash tran_prep.sh`；可選與訓練同樣帶 NV：`USE_SINGULARITY_NV=1 bash tran_prep.sh` | `WORK_DIR/.local` 內有 `pip install` 的 `physicsnemo` 與 corrdiff `requirements.txt` |
-| **5. 訓練－Regression** | 編輯 `tran.slrum`：啟用 **Regression** 的 `torchrun ... config_training_hrrr_mini_regression.yaml`，**關掉** Diffusion 區；檢查 `#SBATCH` 資源；`sbatch tran.slrum` | `checkpoints_regression/*.mdlus` 等產生 |
-| **6. 訓練－Diffusion** | 把 `REGRESSION_MODEL=` 指到上一步的 `.mdlus`；啟用 **Diffusion** 的 `torchrun ... config_training_hrrr_mini_diffusion.yaml`；`sbatch tran.slrum` | `checkpoints_diffusion/`，常見如 `EDMPrecondSuperResolution.*.mdlus`（以實際寫出為準） |
+| **5. 訓練－Regression** | `TRAIN_STAGE=regression sbatch tran.slrum`（必要時再調整 `#SBATCH` GPU 數） | `checkpoints_regression/*.mdlus` 等產生 |
+| **6. 訓練－Diffusion** | 確認上一步權重路徑；`TRAIN_STAGE=diffusion`（預設）或自訂 `REGRESSION_CHECKPOINT=/path/…/.mdlus` 後 `sbatch tran.slrum`；若權重不存在則**作業在啟動前即失敗** | `checkpoints_diffusion/`，如 `EDMPrecondSuperResolution.*.mdlus`（以實際為準） |
 | **7. 推論** | 在 `inference.slrum` 設定 `REGRESSION_MODEL`、`DIFFUSION_MODEL`；依需求改 `config_generate_hrrr_mini.yaml` 的時間點/資料路徑；`sbatch inference.slrum` | 預設產生 `corrdiff_output.nc`，並執行 `score_samples.py` 產生 `score_output.nc`（檔名依設定為準） |
 | **8. 查 log** | 看專案根目錄 `corrdiff_<JobID>.log` | 確認 loss、權重載入、路徑錯誤等 |
 
@@ -92,7 +92,7 @@ Regression checkpoint → 作為條件訓練 Diffusion；Regression + Diffusion 
 | 檔案 | 職責 |
 |------|------|
 | [`tran_prep.sh`](tran_prep.sh) | 在**非** Slurm 或登入節點、用**同一** `.sif` 與 bind，把 `pip` 寫入 `$WORK_DIR/.local`；**訓練作業不應依賴此時再裝**（`tran.slrum` 已不內建 pip）。 |
-| [`tran.slrum`](tran.slrum) | Slurm 上 `torchrun` **訓練**；需**事先** `bash tran_prep.sh`；內建 `MASTER_ADDR=127.0.0.1`；`sbatch` 前請在專案根或設好 `WORK_DIR`。 |
+| [`tran.slrum`](tran.slrum) | `TRAIN_STAGE` 為 `regression` 或 `diffusion` 二擇一；`REGRESSION_CHECKPOINT` 可覆寫；需**事先** `bash tran_prep.sh`；`MASTER_ADDR=127.0.0.1`；在專案根 `sbatch` 或設 `WORK_DIR`。 |
 | [`inference.slrum`](inference.slrum) | `torchrun generate.py` + `score_samples.py`；同樣依賴**事先**的 `tran_prep.sh`，**不**在作業內重跑 `pip`。 |
 | `scripts/build-physicsnemo-sif.sh` | 從 NGC 映像轉出 `.sif`（大檔、勿提交 Git）。 |
 | `scripts/install-physicsnemo-uv.sh` | 在 submodule 內以 `uv sync` 安裝（本機開發用）。 |
