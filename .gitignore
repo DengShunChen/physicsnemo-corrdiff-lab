@@ -3,6 +3,10 @@
 *.sif
 modulus_datasets-hrrr_mini_v1/
 
+# Apptainer 建置暫存（scripts/build-physicsnemo-sif.sh）
+tmp/singularity_build/
+tmp/singularity_cache/
+
 # 根目錄實驗日誌
 corrdiff_*.log
 *.log
