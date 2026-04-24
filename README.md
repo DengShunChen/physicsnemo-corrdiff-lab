@@ -146,3 +146,4 @@ Regression checkpoint → 作為條件訓練 Diffusion；Regression + Diffusion 
 
 - **追蹤**：腳本、講義、`docs/` 自寫補充、`README`、`.gitignore`、**`physicsnemo` submodule 指針**（`.gitmodules`）。
 - **不追蹤**：映像、資料集、`.local`、日誌、大型產出（見 `.gitignore`）。子模組**內**的修改在上游 repo 內以 Git 管理；若要固定到父專案，在子目錄 commit 後回父層 `git add physicsnemo` 再 push。
+- **`physicsnemo` 子模組**：`.gitmodules` 內設 **`ignore = untracked`**，避免本機的 `data` symlink、`wandb/`、`tensorboard/` 等**未納入子 repo 的檔**讓父層一直顯示「子模組有變更」。**若你改到子模組的已追蹤檔**，父層仍會顯示需 `git add physicsnemo` 更新指針。
