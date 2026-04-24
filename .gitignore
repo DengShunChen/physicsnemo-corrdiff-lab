@@ -11,9 +11,6 @@ corrdiff_*.log
 .DS_Store
 ._*
 
-# ---- physicsnemo 另於該子目錄內以上游 Git 管理；勿把整包（含本機 checkpoint）納入此 repo ----
-physicsnemo/
-
 # Python
 __pycache__/
 *.py[cod]
