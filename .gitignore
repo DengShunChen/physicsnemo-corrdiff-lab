@@ -1,0 +1,22 @@
+# ---- 本專案根目錄：大型二進位與環境 ----
+.local/
+*.sif
+modulus_datasets-hrrr_mini_v1/
+
+# 根目錄實驗日誌
+corrdiff_*.log
+*.log
+
+# macOS
+.DS_Store
+._*
+
+# ---- physicsnemo 另於該子目錄內以上游 Git 管理；勿把整包（含本機 checkpoint）納入此 repo ----
+physicsnemo/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env

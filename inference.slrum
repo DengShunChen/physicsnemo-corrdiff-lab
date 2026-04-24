@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH --job-name=TrainCorrDiff       # 作業名稱
+#SBATCH --partition=normal           # 佇列名稱
+#SBATCH --nodes=1                      # 使用節點數
+#SBATCH --gres=gpu:1                   # 申請的 GPU 數量 (若需要多張請改為 gpu:4 或 gpu:8 等)
+#SBATCH --cpus-per-task=8              # 申請的 CPU 核心數
+###SBATCH --mem=32G                      # 申請的記憶體大小
+#SBATCH --mem=0                        # 申請的所有的記憶體大小
+#SBATCH --time=24:00:00                # 預計執行時間上限
+#SBATCH --output=corrdiff_%j.log       # 輸出日誌檔名 (%j 會自動替換為 Job ID)
+
+# 定義絕對路徑 (請確保符合您實際的路徑)
+WORK_DIR="/users/xb80/source/AI-Powered-Physics-Bootcamp"
+cd $WORK_DIR
+
+# 執行 Apptainer 容器
+# --nv 代表啟用 NVIDIA GPU 支援
+# 由於容器內部通常是唯讀的，我們設定 PYTHONUSERBASE 將 pip 安裝的套件放在本地端
+singularity exec --nv --bind $WORK_DIR:$WORK_DIR $WORK_DIR/physicsnemo_25.11.sif bash -c "
+    source ~/.proxy
+
+    cd $WORK_DIR/physicsnemo
+    
+    # 解決 Git 在容器內的安全目錄警告
+    git config --global --add safe.directory $WORK_DIR/physicsnemo
+    
+    # 設定 pip 安裝路徑為本地目錄，避免容器唯讀錯誤
+    export PYTHONUSERBASE=$WORK_DIR/.local
+    export PATH=\$PYTHONUSERBASE/bin:\$PATH
+    
+    # 安裝依賴套件
+    pip install --user .
+    cd examples/weather/corrdiff/
+    pip install --user -r requirements.txt
+    
+    # 開始訓練
+    #python train.py --config-name=config_training_hrrr_mini_regression.yaml
+    
+    # Regreesion
+    #torchrun --nproc_per_node=8 train.py --config-name=config_training_hrrr_mini_regression.yaml
+
+    # Diffusion
+    REGRESSION_MODEL=/users/xb80/source/AI-Powered-Physics-Bootcamp/physicsnemo/examples/weather/corrdiff/checkpoints_regression/CorrDiffRegressionUNet.0.2000384.mdlus
+    DIFFUSION_MODEL=/users/xb80/source/AI-Powered-Physics-Bootcamp/physicsnemo/examples/weather/corrdiff/checkpoints_diffusion/EDMPrecondSuperResolution.0.8000000.mdlus
+
+    # 開始訓練
+    torchrun --nproc_per_node=1 generate.py --config-name=config_generate_hrrr_mini.yaml \
+       ++generation.io.res_ckpt_filename=\${DIFFUSION_MODEL} \
+       ++generation.io.reg_ckpt_filename=\${REGRESSION_MODEL}
+
+    # 校驗
+    python score_samples.py corrdiff_output.nc score_output.nc
+    
+    "
